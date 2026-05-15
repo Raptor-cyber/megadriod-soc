@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Megadriod SOC Lab - Incidents</title>
+
+    <!-- Load websocket FIRST, then investigation -->
+    <script src="/static/websocket.js" defer></script>
+    <script src="/static/investigation.js" defer></script>
+
+    <style>
+        :root {
+            --splunk-bg-canvas: #0b0c0e;
+            --splunk-bg-panel: #171d21;
+            --splunk-bg-global-nav: #000000;
+            --splunk-bg-app-nav: #1c252b;
+            --splunk-border: #2a353d;
+            --splunk-text-main: #c3cbd4;
+            --splunk-text-heading: #eeeeee;
+            --splunk-accent: #0073e7;
+            --splunk-green: #118263;
+            --splunk-green-hover: #159b76;
+            --splunk-red: #d93f3c;
+        }
+
+        body {
+            background-color: var(--splunk-bg-canvas);
+            color: var(--splunk-text-main);
+            font-family: "Proxima Nova", Roboto, "Segoe UI", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-size: 13px;
+        }
+
+        a { text-decoration: none; color: var(--splunk-text-main); }
+        a:hover { color: #ffffff; }
+
+        .global-header {
+            background-color: var(--splunk-bg-global-nav);
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            font-size: 12px;
+        }
+        .global-header .logo-area { font-weight: bold; color: #ffffff; letter-spacing: 0.5px;}
+        .global-header .logo-area span { color: #ff0055; }
+
+        .app-header {
+            background-color: var(--splunk-bg-app-nav);
+            border-bottom: 1px solid var(--splunk-border);
+            display: flex;
+            flex-direction: column;
+            padding: 10px 20px 0 20px;
+        }
+        .app-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .app-title {
+            font-size: 18px;
+            font-weight: 300;
+            color: #ffffff;
+        }
+        
+        .status {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status.ok { background-color: var(--splunk-green); color: white; }
+
+        .app-nav { display: flex; gap: 20px; }
+        .app-nav a {
+            padding: 8px 0;
+            border-bottom: 3px solid transparent;
+            font-size: 13px;
+        }
+        .app-nav a.active {
+            border-bottom: 3px solid var(--splunk-accent);
+            color: #ffffff;
+        }
+
+        .dashboard-canvas {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        .span-full { grid-column: 1 / -1; }
+        .span-2 { grid-column: span 2; }
+
+        .panel {
+            background-color: var(--splunk-bg-panel);
+            border: 1px solid var(--splunk-border);
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel h3 {
+            margin: 0;
+            padding: 10px 15px;
+            font-size: 13px;
+            font-weight: normal;
+            color: var(--splunk-text-heading);
+            border-bottom: 1px solid var(--splunk-border);
+            background-color: rgba(255,255,255,0.02);
+        }
+        .panel-content {
+            padding: 15px;
+            flex-grow: 1;
+            overflow-y: auto;
+            min-height: 200px;
+        }
+
+        .incident-row {
+            padding: 10px;
+            border-bottom: 1px solid var(--splunk-border);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .incident-row:hover {
+            background-color: rgba(0, 115, 231, 0.1);
+        }
+        .incident-row.active {
+            background-color: rgba(0, 115, 231, 0.2);
+            border-left: 3px solid var(--splunk-accent);
+        }
+
+        .incident-title {
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 4px;
+        }
+        .incident-meta {
+            font-size: 12px;
+            color: #6a7782;
+        }
+
+        .severity-critical { border-left: 3px solid #ef4444; }
+        .severity-high { border-left: 3px solid #f97316; }
+        .severity-medium { border-left: 3px solid #facc15; }
+        .severity-low { border-left: 3px solid #22c55e; }
+
+        .search-panel {
+            background-color: var(--splunk-bg-panel);
+            border: 1px solid var(--splunk-border);
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .search-bar-wrapper {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            background-color: #000000;
+            border: 1px solid var(--splunk-accent);
+            border-radius: 2px;
+            padding: 0 10px;
+        }
+        .search-bar-wrapper input {
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            width: 100%;
+            padding: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+            outline: none;
+        }
+        .search-btn {
+            background-color: var(--splunk-green);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: background-color 0.2s;
+        }
+        .search-btn:hover {
+            background-color: var(--splunk-green-hover);
+        }
+
+        .empty-data {
+            color: #6a7782;
+            text-align: center;
+            margin-top: 40px;
+            font-style: italic;
+        }
+
+        .incident-detail-section {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid var(--splunk-border);
+        }
+
+        .timeline-event {
+            padding: 10px;
+            border-left: 3px solid var(--splunk-green);
+            margin-bottom: 10px;
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 2px;
+        }
+
+        .timeline-event.severity-critical { border-left-color: #ef4444; }
+        .timeline-event.severity-high { border-left-color: #f97316; }
+        .timeline-event.severity-medium { border-left-color: #facc15; }
+        .timeline-event.severity-low { border-left-color: #22c55e; }
+
+        .time { font-size: 11px; color: #6a7782; margin-bottom: 4px; }
+        .details { font-size: 12px; line-height: 1.4; }
+    </style>
+</head>
+
+<body>
+
+    <div class="global-header">
+        <div class="logo-area">
+            <img src="/static/css/logo.png" alt="Megadriod logo" style="height:20px; vertical-align:middle; margin-right:8px;">
+            Megadriod<span>></span>Innovation Labs
+        </div>
+        <div>Administrator | Messages | Settings | Help</div>
+    </div>
+
+    <div class="app-header">
+        <div class="app-title-row">
+            <div class="app-title">Incidents Management</div>
+            <div class="status ok">INVESTIGATION MODE</div>
+        </div>
+        <div class="app-nav">
+            <a href="/">Dashboard</a>
+            <a href="/incidents" class="active">Incidents</a>
+            <a href="/investigation">Investigation</a>
+        </div>
+    </div>
+
+    <div class="dashboard-canvas">
+        <div class="grid-container">
+
+            <!-- Incidents List -->
+            <div class="panel span-2">
+                <h3>Active Incidents</h3>
+                <div class="panel-content">
+                    <div id="incidentsList" class="empty-data">Loading incidents...</div>
+                </div>
+            </div>
+
+            <!-- Selected Incident Details -->
+            <div class="panel">
+                <h3>Incident Details</h3>
+                <div class="panel-content">
+                    <div id="incidentDetails" class="empty-data">Select an incident to view details.</div>
+                </div>
+            </div>
+
+            <!-- Investigation Search -->
+            <div class="search-panel span-full">
+                <div class="search-bar-wrapper">
+                    <span style="color:var(--splunk-green); font-weight:bold; margin-right:8px;">&gt;</span>
+                    <input 
+                        id="entityInput"
+                        placeholder='Search entity (e.g., user="admin", host="server01", IP="192.168.1.50")...'
+                    />
+                </div>
+                <button id="investigateBtn" class="search-btn">Run Investigation</button>
+            </div>
+
+            <!-- Timeline -->
+            <div class="panel span-2">
+                <h3>Timeline Reconstruction</h3>
+                <div class="panel-content">
+                    <div id="investigationTimeline" class="empty-data">Select an incident to view timeline.</div>
+                </div>
+            </div>
+
+            <!-- Evidence -->
+            <div class="panel">
+                <h3>Evidence Collection</h3>
+                <div class="panel-content">
+                    <div id="evidencePanel" class="empty-data">No evidence collected.</div>
+                </div>
+            </div>
+
+            <!-- Filtered Events -->
+            <div class="panel span-2">
+                <h3>Filtered Events</h3>
+                <div class="panel-content">
+                    <div id="filteredEvents" class="empty-data">0 events matched.</div>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="panel">
+                <h3>Analyst Notes</h3>
+                <div class="panel-content">
+                    <div id="notesPanel" class="empty-data">No notes added.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Wait for both websocket.js and investigation.js to load
+        window.addEventListener("DOMContentLoaded", async () => {
+            // Ensure SOCInvestigation class is available
+            if (typeof SOCInvestigation === "undefined") {
+                console.error("SOCInvestigation class not loaded!");
+                return;
+            }
+
+            // Initialize investigation engine FIRST
+            window.socInvestigation = new SOCInvestigation();
+
+            // Load incidents list
+            try {
+                const res = await fetch("/api/incidents?limit=50");
+                const incidents = await res.json() || [];
+                
+                const listEl = document.getElementById("incidentsList");
+                if (incidents.length === 0) {
+                    listEl.innerHTML = '<div class="empty-data">No incidents found.</div>';
+                } else {
+                    listEl.innerHTML = incidents.map(i => `
+                        <div class="incident-row severity-${i.severity}" onclick="window.location.href='/incidents?id=${i.id}'" style="cursor:pointer;">
+                            <div class="incident-title">${i.title}</div>
+                            <div class="incident-meta">
+                                Severity: ${i.severity} | Status: ${i.status} | Risk: ${i.risk_score}
+                            </div>
+                        </div>
+                    `).join("");
+                }
+            } catch (err) {
+                console.error("Failed to load incidents:", err);
+                listEl.innerHTML = '<div class="empty-data">Error loading incidents.</div>';
+            }
+        });
+
+        function selectIncident(incident) {
+            const detailsEl = document.getElementById("incidentDetails");
+            if (detailsEl) {
+                detailsEl.innerHTML = `
+                    <div class="incident-detail-section">
+                        <div><b>Title:</b> ${incident.title}</div>
+                        <div><b>Severity:</b> ${incident.severity}</div>
+                        <div><b>Status:</b> ${incident.status}</div>
+                        <div><b>Risk Score:</b> ${incident.risk_score}</div>
+                        <div><b>Created:</b> ${new Date(incident.created_at).toLocaleString()}</div>
+                    </div>
+                `;
+            }
+
+            const timelineEl = document.getElementById("investigationTimeline");
+            if (timelineEl && incident.evidence) {
+                timelineEl.innerHTML = incident.evidence.map(e => `
+                    <div class="timeline-event severity-${e.severity || "low"}">
+                        <div class="time">${new Date(e.timestamp).toLocaleString()}</div>
+                        <div class="details">
+                            <b>${e.type}</b><br/>
+                            User: ${e.user} | Host: ${e.host} | IP: ${e.ip}
+                        </div>
+                    </div>
+                `).join("");
+            }
+        }
+    </script>
+
+</body>
+</html>

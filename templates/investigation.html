@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Megadriod SOC Lab - Deep Investigation</title>
+
+    <script src="/static/websocket.js" defer></script>
+    <script src="/static/investigation.js" defer></script>
+
+    <style>
+        :root {
+            --splunk-bg-canvas: #0b0c0e;
+            --splunk-bg-panel: #171d21;
+            --splunk-bg-global-nav: #000000;
+            --splunk-bg-app-nav: #1c252b;
+            --splunk-border: #2a353d;
+            --splunk-text-main: #c3cbd4;
+            --splunk-text-heading: #eeeeee;
+            --splunk-accent: #0073e7;
+            --splunk-green: #118263;
+            --splunk-green-hover: #159b76;
+            --splunk-red: #d93f3c;
+        }
+
+        body {
+            background-color: var(--splunk-bg-canvas);
+            color: var(--splunk-text-main);
+            font-family: "Proxima Nova", Roboto, "Segoe UI", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-size: 13px;
+        }
+
+        a { text-decoration: none; color: var(--splunk-text-main); }
+        a:hover { color: #ffffff; }
+
+        .global-header {
+            background-color: var(--splunk-bg-global-nav);
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            font-size: 12px;
+        }
+        .global-header .logo-area { font-weight: bold; color: #ffffff; letter-spacing: 0.5px;}
+        .global-header .logo-area span { color: #ff0055; }
+
+        .app-header {
+            background-color: var(--splunk-bg-app-nav);
+            border-bottom: 1px solid var(--splunk-border);
+            display: flex;
+            flex-direction: column;
+            padding: 10px 20px 0 20px;
+        }
+        .app-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .app-title {
+            font-size: 18px;
+            font-weight: 300;
+            color: #ffffff;
+        }
+        
+        .status {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status.bad { background-color: var(--splunk-red); color: white; }
+        .status.ok { background-color: var(--splunk-green); color: white; }
+
+        .app-nav { display: flex; gap: 20px; }
+        .app-nav a {
+            padding: 8px 0;
+            border-bottom: 3px solid transparent;
+            font-size: 13px;
+        }
+        .app-nav a.active {
+            border-bottom: 3px solid var(--splunk-accent);
+            color: #ffffff;
+        }
+
+        .dashboard-canvas {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        .span-full { grid-column: 1 / -1; }
+        .span-2 { grid-column: span 2; }
+
+        .panel {
+            background-color: var(--splunk-bg-panel);
+            border: 1px solid var(--splunk-border);
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel h3 {
+            margin: 0;
+            padding: 10px 15px;
+            font-size: 13px;
+            font-weight: normal;
+            color: var(--splunk-text-heading);
+            border-bottom: 1px solid var(--splunk-border);
+            background-color: rgba(255,255,255,0.02);
+        }
+        .panel-content {
+            padding: 15px;
+            flex-grow: 1;
+            overflow-y: auto;
+            min-height: 200px;
+        }
+
+        .search-panel {
+            background-color: var(--splunk-bg-panel);
+            border: 1px solid var(--splunk-border);
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .search-bar-wrapper {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            background-color: #000000;
+            border: 1px solid var(--splunk-accent);
+            border-radius: 2px;
+            padding: 0 10px;
+        }
+        .search-bar-wrapper input {
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            width: 100%;
+            padding: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+            outline: none;
+        }
+        .search-btn {
+            background-color: var(--splunk-green);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: background-color 0.2s;
+        }
+        .search-btn:hover {
+            background-color: var(--splunk-green-hover);
+        }
+
+        .incident-banner {
+            padding: 15px;
+            font-size: 14px;
+            color: #ffffff;
+            border-left: 4px solid var(--splunk-red);
+        }
+
+        .empty-data {
+            color: #6a7782;
+            text-align: center;
+            margin-top: 40px;
+            font-style: italic;
+        }
+
+        .timeline-event {
+            padding: 10px;
+            border-left: 3px solid var(--splunk-green);
+            margin-bottom: 10px;
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 2px;
+        }
+
+        .timeline-event.severity-critical { border-left-color: #ef4444; }
+        .timeline-event.severity-high { border-left-color: #f97316; }
+        .timeline-event.severity-medium { border-left-color: #facc15; }
+        .timeline-event.severity-low { border-left-color: #22c55e; }
+
+        .time { font-size: 11px; color: #6a7782; margin-bottom: 4px; }
+        .details { font-size: 12px; line-height: 1.4; }
+    </style>
+</head>
+
+<body>
+
+    <div class="global-header">
+        <div class="logo-area">
+            <img src="/static/css/logo.png" alt="Megadriod logo" style="height:20px; vertical-align:middle; margin-right:8px;">
+            Megadriod<span>></span>Innovation Labs
+        </div>
+        <div>Administrator | Messages | Settings | Help</div>
+    </div>
+
+    <div class="app-header">
+        <div class="app-title-row">
+            <div class="app-title">Deep Investigation Console</div>
+            <div id="connectionStatus" class="status bad">DISCONNECTED</div>
+        </div>
+        <div class="app-nav">
+            <a href="/">Dashboard</a>
+            <a href="/incidents">Incidents</a>
+            <a href="/investigation" class="active">Investigation</a>
+        </div>
+    </div>
+
+    <div class="dashboard-canvas">
+        <div class="grid-container">
+
+            <div class="panel span-full">
+                <div id="incidentHeader" class="incident-banner">
+                    Loading incident data...
+                </div>
+            </div>
+
+            <div class="search-panel span-full">
+                <div class="search-bar-wrapper">
+                    <span style="color:var(--splunk-green); font-weight:bold; margin-right:8px;">&gt;</span>
+                    <input 
+                        id="entityInput"
+                        placeholder="Pivot entity (e.g., user, host, IP, or event ID)..."
+                    />
+                </div>
+                <button id="investigateBtn" class="search-btn">Pivot Investigation</button>
+            </div>
+
+            <div class="panel span-2">
+                <h3>Attack Timeline</h3>
+                <div class="panel-content">
+                    <div id="investigationTimeline" class="empty-data">Select an incident to view timeline...</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Evidence Chain</h3>
+                <div class="panel-content">
+                    <div id="evidencePanel" class="empty-data">No evidence logged yet.</div>
+                </div>
+            </div>
+
+            <div class="panel span-2">
+                <h3>Entity Pivot Results</h3>
+                <div class="panel-content">
+                    <div id="filteredEvents" class="empty-data">Awaiting pivot command.</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Analyst Notes</h3>
+                <div class="panel-content">
+                    <div id="notesPanel" class="empty-data">No notes added.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Initialize investigation page with data loading
+        window.addEventListener("DOMContentLoaded", async () => {
+            // Update connection status
+            if (window.SOCWS) {
+                window.SOCWS.on("message", (data) => {
+                    const statusEl = document.getElementById("connectionStatus");
+                    if (data.status === "connected") {
+                        statusEl.textContent = "CONNECTED";
+                        statusEl.className = "status ok";
+                    } else if (data.status === "disconnected") {
+                        statusEl.textContent = "DISCONNECTED";
+                        statusEl.className = "status bad";
+                    }
+                });
+            }
+
+            // Load incident from URL or fetch latest
+            const params = new URLSearchParams(window.location.search);
+            const incidentId = params.get("id");
+
+            try {
+                let incident = null;
+
+                if (incidentId) {
+                    // Load specific incident
+                    const res = await fetch(`/api/incident/${incidentId}`);
+                    incident = await res.json();
+                } else {
+                    // Load latest incident
+                    const res = await fetch(`/api/incidents?limit=1`);
+                    const incidents = await res.json();
+                    if (incidents.length > 0) {
+                        incident = incidents[0];
+                    }
+                }
+
+                if (incident && window.socInvestigation) {
+                    window.socInvestigation.loadIncident(incident);
+                } else if (!incident) {
+                    document.getElementById("incidentHeader").innerHTML = 
+                        '<div class="empty-data">No incident selected. Go to <a href="/incidents">Incidents</a> page to select one.</div>';
+                }
+            } catch (err) {
+                console.error("Failed to load incident:", err);
+                document.getElementById("incidentHeader").innerHTML = 
+                    '<div class="empty-data">Error loading incident data. Check console.</div>';
+            }
+        });
+    </script>
+
+</body>
+</html>

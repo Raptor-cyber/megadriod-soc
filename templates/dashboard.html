@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Megadriod SOC Lab - Dashboard</title>
+
+    <script src="/static/app.js" defer></script>
+    <script src="/static/charts.js" defer></script>
+    <script src="/static/websocket.js" defer></script>
+
+    <style>
+        /* =========================================
+           SPLUNK ENTERPRISE DARK THEME
+           ========================================= */
+        :root {
+            --splunk-bg-canvas: #0b0c0e;
+            --splunk-bg-panel: #171d21;
+            --splunk-bg-global-nav: #000000;
+            --splunk-bg-app-nav: #1c252b;
+            --splunk-border: #2a353d;
+            --splunk-text-main: #c3cbd4;
+            --splunk-text-heading: #eeeeee;
+            --splunk-accent: #0073e7;
+            --splunk-green: #118263;
+            --splunk-red: #d93f3c;
+            --splunk-input-bg: #000000;
+            --splunk-input-border: #4a565f;
+        }
+
+        body {
+            background-color: var(--splunk-bg-canvas);
+            color: var(--splunk-text-main);
+            font-family: "Proxima Nova", Roboto, "Segoe UI", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-size: 13px;
+        }
+
+        a { text-decoration: none; color: var(--splunk-text-main); }
+        a:hover { color: #ffffff; }
+
+        .global-header {
+            background-color: var(--splunk-bg-global-nav);
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            font-size: 12px;
+        }
+        .global-header .logo-area { font-weight: bold; color: #ffffff; letter-spacing: 0.5px;}
+        .global-header .logo-area span { color: #ff0055; }
+
+        .app-header {
+            background-color: var(--splunk-bg-app-nav);
+            border-bottom: 1px solid var(--splunk-border);
+            display: flex;
+            flex-direction: column;
+            padding: 10px 20px 0 20px;
+        }
+        .app-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .app-title {
+            font-size: 18px;
+            font-weight: 300;
+            color: #ffffff;
+        }
+
+        .status {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status.bad { background-color: var(--splunk-red); color: white; }
+        .status.good { background-color: var(--splunk-green); color: white; }
+
+        .app-nav { display: flex; gap: 20px; }
+        .app-nav a {
+            padding: 8px 0;
+            border-bottom: 3px solid transparent;
+            font-size: 13px;
+        }
+        .app-nav a.active {
+            border-bottom: 3px solid var(--splunk-accent);
+            color: #ffffff;
+        }
+
+        .dashboard-canvas {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .dashboard-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        .dashboard-title {
+            font-size: 20px;
+            font-weight: normal;
+            color: #ffffff;
+            margin: 0;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        .span-full { grid-column: 1 / -1; }
+        .span-2 { grid-column: span 2; }
+
+        .panel {
+            background-color: var(--splunk-bg-panel);
+            border: 1px solid var(--splunk-border);
+            border-radius: 2px;
+            display: flex;
+            flex-direction: column;
+            min-height: 300px;
+        }
+        .panel h3 {
+            margin: 0;
+            padding: 10px 15px;
+            font-size: 13px;
+            font-weight: normal;
+            color: var(--splunk-text-heading);
+            border-bottom: 1px solid var(--splunk-border);
+            background-color: rgba(255,255,255,0.02);
+        }
+        .panel-content {
+            padding: 15px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .stats-panel {
+            min-height: auto;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        input, select {
+            background-color: var(--splunk-input-bg);
+            color: var(--splunk-text-heading);
+            border: 1px solid var(--splunk-input-border);
+            border-radius: 2px;
+            padding: 6px 10px;
+            font-size: 12px;
+            outline: none;
+            width: 100%;
+        }
+        input:focus, select:focus {
+            border-color: var(--splunk-accent);
+        }
+        select { cursor: pointer; }
+
+        .empty-data {
+            color: #6a7782;
+            text-align: center;
+            margin-top: 40px;
+            font-style: italic;
+        }
+
+        .event-row,
+        .alert-row,
+        .incident-row {
+            padding: 12px;
+            border-bottom: 1px solid var(--splunk-border);
+            font-size: 12px;
+        }
+        .event-row:nth-child(odd),
+        .alert-row:nth-child(odd),
+        .incident-row:nth-child(odd) {
+            background: rgba(255,255,255,0.02);
+        }
+        .event-row span,
+        .alert-row span,
+        .incident-row span {
+            display: inline-block;
+            min-width: 90px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="global-header">
+        <div class="logo-area">
+            <img src="/static/css/logo.png" alt="Megadriod logo" style="height:20px; vertical-align:middle; margin-right:8px;">
+            Megadriod<span>></span>Innovation Labs
+        </div>
+        <div>Administrator | Messages | Settings | Help</div>
+    </div>
+
+    <div class="app-header">
+        <div class="app-title-row">
+            <div class="app-title">Megadriod SOC Lab</div>
+            <div id="connectionStatus" class="status bad">DISCONNECTED</div>
+        </div>
+        <div class="app-nav">
+            <a href="/" class="active">Dashboard</a>
+            <a href="/incidents">Incidents</a>
+            <a href="/investigation">Investigation</a>
+        </div>
+    </div>
+
+    <div class="dashboard-canvas">
+
+        <div class="dashboard-controls">
+            <h1 class="dashboard-title">Security Operations Center Overview</h1>
+        </div>
+
+        <div class="grid-container">
+
+            <div class="panel span-full">
+                <div id="stats" class="stats-panel">
+                    Waiting for data...
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Live Events</h3>
+                <div class="panel-content">
+                    <div class="input-group">
+                        <input id="search" placeholder="Search events... (e.g., failed_login)" />
+                    </div>
+                    <div class="input-group">
+                        <select id="severityFilter">
+                            <option value="all">* All Severities</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                    <div id="events" class="empty-data">No events found.</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Active Alerts</h3>
+                <div class="panel-content">
+                    <div id="alerts" class="empty-data">No active alerts.</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Recent Incidents</h3>
+                <div class="panel-content">
+                    <div id="incidents" class="empty-data">No incidents generated.</div>
+                </div>
+            </div>
+
+            <div class="panel span-2">
+                <h3>Event Timeline</h3>
+                <div class="panel-content">
+                    <canvas id="timelineChart"></canvas>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Incident Distribution by Type</h3>
+                <div class="panel-content">
+                    <div id="incidentChart" class="empty-data">Waiting for visualization data...</div>
+                </div>
+            </div>
+
+            <div class="panel span-full">
+                <h3>Alert Heatmap (Last 24 Hours)</h3>
+                <div class="panel-content" style="min-height: 200px;">
+                    <div id="alertHeatmap" class="empty-data">Waiting for visualization data...</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const statusEl = document.getElementById("connectionStatus");
+            const statsEl = document.getElementById("stats");
+            const eventsEl = document.getElementById("events");
+            const alertsEl = document.getElementById("alerts");
+            const incidentsEl = document.getElementById("incidents");
+            const searchInput = document.getElementById("search");
+            const severityFilter = document.getElementById("severityFilter");
+
+            let events = [];
+            let alerts = [];
+            let incidents = [];
+
+            function formatEvent(event) {
+                return `
+                    <div class="event-row">
+                        <span>${event.timestamp || ""}</span>
+                        <span>${event.source || ""}</span>
+                        <span>${event.event_type || ""}</span>
+                        <span>${event.severity || ""}</span>
+                        <span>${event.user || ""}</span>
+                    </div>`;
+            }
+
+            function formatAlert(alert) {
+                return `
+                    <div class="alert-row">
+                        <span>${alert.timestamp || ""}</span>
+                        <span>${alert.title || alert.rule || ""}</span>
+                        <span>${alert.severity || ""}</span>
+                        <span>${alert.description || ""}</span>
+                    </div>`;
+            }
+
+            function formatIncident(incident) {
+                return `
+                    <div class="incident-row">
+                        <span>${incident.created_at || ""}</span>
+                        <span>${incident.title || ""}</span>
+                        <span>${incident.severity || ""}</span>
+                        <span>${incident.status || ""}</span>
+                    </div>`;
+            }
+
+            function renderStats() {
+                statsEl.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 15px; width: 100%;">
+                        <div><strong>Events:</strong> ${events.length}</div>
+                        <div><strong>Alerts:</strong> ${alerts.length}</div>
+                        <div><strong>Incidents:</strong> ${incidents.length}</div>
+                    </div>`;
+            }
+
+            function renderEvents() {
+                const query = searchInput.value.trim().toLowerCase();
+                const severity = severityFilter.value;
+                const filtered = events.filter((event) => {
+                    const text = `${event.source} ${event.event_type} ${event.user} ${event.host} ${event.ip}`.toLowerCase();
+                    const matchesQuery = !query || text.includes(query);
+                    const matchesSeverity = severity === "all" || event.severity === severity;
+                    return matchesQuery && matchesSeverity;
+                });
+
+                if (!filtered.length) {
+                    eventsEl.innerHTML = `<div class="empty-data">No events found.</div>`;
+                    return;
+                }
+
+                eventsEl.innerHTML = filtered
+                    .slice(-20)
+                    .reverse()
+                    .map(formatEvent)
+                    .join("");
+            }
+
+            function renderAlerts() {
+                if (!alerts.length) {
+                    alertsEl.innerHTML = `<div class="empty-data">No active alerts.</div>`;
+                    return;
+                }
+                alertsEl.innerHTML = alerts
+                    .slice(-20)
+                    .reverse()
+                    .map(formatAlert)
+                    .join("");
+            }
+
+            function renderIncidents() {
+                if (!incidents.length) {
+                    incidentsEl.innerHTML = `<div class="empty-data">No incidents generated.</div>`;
+                    return;
+                }
+                incidentsEl.innerHTML = incidents
+                    .slice(-20)
+                    .reverse()
+                    .map(formatIncident)
+                    .join("");
+            }
+
+            function setConnectionStatus(connected) {
+                statusEl.textContent = connected ? "CONNECTED" : "DISCONNECTED";
+                statusEl.classList.toggle("good", connected);
+                statusEl.classList.toggle("bad", !connected);
+            }
+
+            async function loadInitialData() {
+                try {
+                    const [eventsRes, alertsRes, incidentsRes] = await Promise.all([
+                        fetch("/api/events"),
+                        fetch("/api/alerts"),
+                        fetch("/api/incidents"),
+                    ]);
+                    
+                    events = await eventsRes.json();
+                    alerts = await alertsRes.json();
+                    incidents = await incidentsRes.json();
+                    
+                    renderStats();
+                    renderEvents();
+                    renderAlerts();
+                    renderIncidents();
+                } catch (error) {
+                    statsEl.innerHTML = `<div class="empty-data">Unable to load data.</div>`;
+                    console.error("Failed to load initial dashboard data:", error);
+                }
+            }
+
+            function connectWebSocket() {
+                const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+                const socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
+
+                socket.addEventListener("open", () => {
+                    setConnectionStatus(true);
+                });
+
+                socket.addEventListener("message", (event) => {
+                    let payload;
+                    try {
+                        payload = JSON.parse(event.data);
+                    } catch {
+                        return;
+                    }
+
+                    if (payload.type === "event" && payload.data) {
+                        events.push(payload.data);
+                        renderStats();
+                        renderEvents();
+                    }
+
+                    if (payload.type === "alert" && payload.data) {
+                        alerts.push(payload.data);
+                        renderStats();
+                        renderAlerts();
+                    }
+
+                    if (payload.type === "incident" && payload.data) {
+                        incidents.push(payload.data);
+                        renderStats();
+                        renderIncidents();
+                    }
+                });
+
+                socket.addEventListener("close", () => {
+                    setConnectionStatus(false);
+                    setTimeout(connectWebSocket, 3000);
+                });
+
+                socket.addEventListener("error", () => {
+                    setConnectionStatus(false);
+                });
+            }
+
+            searchInput.addEventListener("input", renderEvents);
+            severityFilter.addEventListener("change", renderEvents);
+
+            loadInitialData();
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>
